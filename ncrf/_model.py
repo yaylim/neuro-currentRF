@@ -262,6 +262,40 @@ def _compute_gamma_ip(z: FloatArray, x: FloatArray, gamma: FloatArray) -> None:
     compute_gamma_c(z, a, gamma)
     return
 
+# ── Progress tracking ──────────────────────────────────────────────────────────
+
+@dataclass
+class OptimizationTracker:
+    """Records per-iteration snapshots during NCRF.fit()."""
+    snapshots: list = field(default_factory=list)
+
+    def record(self, iteration: int, objective: float, residual: float, theta: FloatArray):
+        self.snapshots.append({
+            'iteration': iteration,
+            'objective': objective,
+            'residual': residual,
+            'theta': theta.copy(),
+        })
+
+    def summary(self):
+        for s in self.snapshots:
+            print(f"Iter {s['iteration']:3d}  obj={s['objective']:.6f}  residual={s['residual']:.2e}")
+
+
+def maybe_track(func):
+    """Inject an OptimizationTracker into fit() when track_progress=True."""
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        track = kwargs.pop('track_progress', False)
+        if not track:
+            return func(self, *args, **kwargs)
+        tracker = OptimizationTracker()
+        result = func(self, *args, tracker=tracker, **kwargs)
+        self.tracker = tracker
+        return result
+    return wrapper
+
+# ── End progress tracking ──────────────────────────────────────────────────────
 
 @dataclass(eq=False, repr=False)
 class RegressionData:
@@ -972,6 +1006,7 @@ class NCRF:
             end = time.time()
             logger.debug(f'{key} \t {end - start}')
 
+    @maybe_track
     def fit(
             self,
             data: RegressionData,
@@ -985,6 +1020,7 @@ class NCRF:
             n_workers: int = None,
             compute_explained_variance: bool = False,
             accept_whitening: bool = False,
+            tracker: 'OptimizationTracker | None' = None,  # injected by decorator
     ) -> None:
         """Fit the NCRF model to prepared regression data.
 
@@ -1119,6 +1155,11 @@ class NCRF:
             self._solve(data, theta)
 
             self.objective_vals.append(self.eval_obj(data))
+
+            # ── track progress ────────────────────────────────────────────────
+            if tracker is not None:
+                tracker.record(i, self.objective_vals[-1], self.err[-1], self.theta)
+            # ─────────────────────────────────────────────────────────────────
 
             logger.debug(f'{myname}:{i} \t {self.objective_vals[-1]} \t {self.err[-1] * 100}')
 
