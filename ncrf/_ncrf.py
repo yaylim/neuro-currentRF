@@ -88,6 +88,7 @@ def fit_ncrf(
         use_ES: bool = False,
         basis_std: float = 0.0085,
         do_post_normalization: bool = True,
+        track_progress: bool = False,  # ADD
 ) -> NCRF:
     r"""One shot function for cortical TRF localization.
 
@@ -290,7 +291,8 @@ def fit_ncrf(
 
     model = NCRF(lead_field, noise_cov, n_iter=n_iter, n_iterc=n_iterc, n_iterf=n_iterf)
     model.fit(ds, mu, do_crossvalidation, tol, verbose, mus=mus, n_splits=n_splits,
-              n_workers=n_workers, use_ES=use_ES, compute_explained_variance=True)
+              n_workers=n_workers, use_ES=use_ES, compute_explained_variance=True,
+              track_progress=track_progress)
     return model
 
 

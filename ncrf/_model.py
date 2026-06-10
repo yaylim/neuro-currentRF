@@ -12,8 +12,8 @@ from __future__ import annotations
 import time
 import copy
 import collections
-from dataclasses import dataclass
-from functools import cached_property
+from dataclasses import dataclass, field
+from functools import cached_property, wraps
 from math import sqrt, log10
 from multiprocessing import current_process
 from operator import attrgetter
@@ -284,7 +284,7 @@ class OptimizationTracker:
 
 def maybe_track(func):
     """Inject an OptimizationTracker into fit() when track_progress=True."""
-    @functools.wraps(func)
+    @wraps(func)
     def wrapper(self, *args, **kwargs):
         track = kwargs.pop('track_progress', False)
         if not track:
