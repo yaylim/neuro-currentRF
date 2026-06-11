@@ -798,7 +798,7 @@ class NCRF:
         'noise_covariance', 'n_iter', 'n_iterc', 'n_iterf', 'lead_field', '_data',
         'explained_var', '_voxelwise_explained_variance', '_stim_baseline', '_stim_scaling',
         'residual', 'sensor', 'source', 'space', 'theta', 'tstart', 'tstep', 'tstop',
-        'basis_std', '_stim_normalization',
+        'basis_std', '_stim_normalization', 'tracker',
     )
 
     def __getstate__(self) -> dict[str, Any]:
