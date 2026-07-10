@@ -88,7 +88,7 @@ def fit_ncrf(
         use_ES: bool = False,
         basis_std: float = 0.0085,
         do_post_normalization: bool = True,
-        track_progress: bool = False,
+        track_progress: int = 2,
 ) -> NCRF:
     r"""One shot function for cortical TRF localization.
 
@@ -165,7 +165,8 @@ def fit_ncrf(
         Scales covariate matrices of different predictor variables by spectral norms to
         equalize their spectral spread (=1). (default ``True``)
     track_progress
-        Track progress during fitting, by default ``False``
+        Track progress during fitting. Records objective value, residual, ``theta``
+        and ``Gamma`` at each iteration by default. Set to 0 for not tracking progress.
 
     Returns
     -------

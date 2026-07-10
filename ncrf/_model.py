@@ -264,22 +264,92 @@ def _compute_gamma_ip(z: FloatArray, x: FloatArray, gamma: FloatArray) -> None:
 
 
 @dataclass
-class OptimizationTracker:
-    """Records per-iteration snapshots during NCRF.fit()."""
-    snapshots: list = field(default_factory=list)
+class OptimizationSnapshot:
+    """State of the NCRF optimization at a single iteration.
 
-    def record(self, iteration: int, objective: float, residual: float, theta: FloatArray, gamma: list):
-        self.snapshots.append({
-            'iteration': iteration,
-            'objective': objective,
-            'residual': residual,
-            'theta': theta.copy(),
-            'gamma': copy.deepcopy(gamma),
-        })
+    Attributes
+    ----------
+    iteration
+        Outer iteration index.
+    objective
+        Objective function value at this iteration.
+    residual
+        Relative change in ``theta`` from the previous iteration,
+        used as the stopping criterion:
+        ``norm(theta_new - theta_old) / norm(theta_old)``.
+    theta
+        TRF coefficient matrix over the Gaussian basis at this iteration,
+        shape ``(n_sources * dc, n_basis_cols)``. Only stored when
+        ``track_progress >= 2``, otherwise ``None``.
+    gamma
+        Source covariance matrices at this iteration, shape
+        ``(n_segments, n_sources, dc, dc)``. Only stored when
+        ``track_progress >= 2``, otherwise ``None``.
+
+    Notes
+    -----
+    Use :meth:`get_h` to reconstruct the NCRF NDVar from a stored
+    ``theta`` snapshot.
+    """
+    iteration: int
+    objective: float
+    residual: float
+    theta: FloatArray | None = None
+    gamma: list | None = None
+
+    def get_h(self, model: NCRF) -> NDVar:
+        """Reconstruct NCRF at this iteration using the stored theta."""
+        if self.theta is None:
+            raise ValueError("theta was not stored; refit with track_progress >= 2")
+        # temporarily swap theta, compute h, restore
+        original_theta = model.theta
+        model.theta = self.theta
+        # clear cached h so it recomputes with the snapshot theta
+        model.__dict__.pop('h', None)
+        model.__dict__.pop('h_scaled', None)
+        h = model.h
+        # restore original state
+        model.theta = original_theta
+        model.__dict__.pop('h', None)
+        model.__dict__.pop('h_scaled', None)
+        return h
+
+
+@dataclass
+class OptimizationTracker:
+    """Records optimization state across iterations during :meth:`NCRF.fit`.
+
+    An instance is attached to the fitted model as ``model.tracker`` when
+    ``track_progress > 0`` is passed to :meth:`NCRF.fit` or
+    :func:`fit_ncrf`. Each outer iteration appends one
+    :class:`OptimizationSnapshot` to :attr:`snapshots`.
+
+    Attributes
+    ----------
+    snapshots
+        List of :class:`OptimizationSnapshot` objects, one per outer
+        iteration, in order.
+
+    Notes
+    -----
+    The tracker is excluded by default when saving with :meth:`NCRF.pickle`
+    because storing ``theta`` and ``Gamma`` at every iteration can lead to
+    large files. Pass ``tracker=True`` to include it.
+    """
+    snapshots: list[OptimizationSnapshot] = field(default_factory=list)
+
+    def record(self, iteration, objective, residual, theta=None, gamma=None):
+        self.snapshots.append(OptimizationSnapshot(
+            iteration=iteration,
+            objective=objective,
+            residual=residual,
+            theta=theta.copy() if theta is not None else None,
+            gamma=copy.deepcopy(gamma) if gamma is not None else None,
+        ))
 
     def summary(self):
         for s in self.snapshots:
-            print(f"Iter {s['iteration']:3d}  obj={s['objective']:.6f}  residual={s['residual']:.2e}")
+            print(f"Iter {s.iteration:3d}  obj={s.objective:.6f}  residual={s.residual:.2e}")
 
 
 @dataclass(eq=False, repr=False)
@@ -888,8 +958,8 @@ class NCRF:
     def pickle(
             self,
             path: str,
-            data: bool = False,
-            tracker: bool = False,  # CHANGE
+            data: bool = True,
+            tracker: bool = True,
     ) -> None:
         """Pickle the model to a file.
 
@@ -898,11 +968,11 @@ class NCRF:
         path
             Destination file path.
         data
-            If ``False`` (default), exclude ``_data`` from the saved file.
+            ``True`` by default. If ``False``, exclude ``_data`` from the saved file.
             The data object can be large and is often not needed after fitting.
         tracker
-            If ``False`` (default), exclude the optimization tracker from the
-            saved file. Set to ``True`` to include it, noting that tracker
+            ``True`` by default. If ``False``, exclude the optimization tracker from the
+            saved file. Note that tracker
             snapshots store a copy of ``theta`` and ``gamma`` at every iteration and may
             lead to large files.
         """
@@ -1081,11 +1151,19 @@ class NCRF:
             Accept pre-whitened data. This is intended for internal workflows
             that slice an already-whitened dataset, such as cross-validation.
         track_progress
-            If ``True``, records a snapshot of ``theta``, ``gamma``, the objective value, and
-            the residual at each iteration. The result is stored in ``model.tracker``
-            after fitting. Note that storing ``theta`` and ``gamma`` at every iteration may lead to
-            large pickle files. To include the tracker when saving, use :meth:`NCRF.pickle` with
-            ``tracker=True``.
+            Controls optimization progress tracking. When enabled, an
+            :class:`OptimizationTracker` is attached to the model as
+            ``model.tracker`` after fitting, containing a snapshot of the
+            optimization state at each iteration. Possible values:
+
+            - ``0``: no tracking
+            - ``1``: record objective value and residual only
+            - ``2`` (default): also store ``theta`` and ``Gamma`` at each iteration,
+              allowing the NCRF to be reconstructed at any point via
+              :meth:`OptimizationSnapshot.get_h`. Note that storing these
+              arrays at every iteration may lead to large files when pickling.
+              Use :meth:`NCRF.pickle` with ``tracker=False`` to exclude the
+              tracker when saving.
         """
         logger = logging.getLogger(__name__)
         if data.is_whitened:
@@ -1187,7 +1265,13 @@ class NCRF:
             self.objective_vals.append(self.eval_obj(data))
 
             if tracker is not None:
-                tracker.record(i, self.objective_vals[-1], self.err[-1], self.theta, self.Gamma)
+                tracker.record(
+                    iteration=i,
+                    objective=self.objective_vals[-1] if track_progress == 1 else None,
+                    residual=self.err[-1] if track_progress == 1 else None,
+                    theta=self.theta if track_progress == 2 else None,
+                    gamma=self.Gamma if track_progress == 2 else None,
+                )
 
             logger.debug(f'{myname}:{i} \t {self.objective_vals[-1]} \t {self.err[-1] * 100}')
 
