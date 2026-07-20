@@ -1267,8 +1267,8 @@ class NCRF:
             if tracker is not None:
                 tracker.record(
                     iteration=i,
-                    objective=self.objective_vals[-1] if track_progress == 1 else None,
-                    residual=self.err[-1] if track_progress == 1 else None,
+                    objective=self.objective_vals[-1] if track_progress >= 1 else None,
+                    residual=self.err[-1] if track_progress >= 1 else None,
                     theta=self.theta if track_progress == 2 else None,
                     gamma=self.Gamma if track_progress == 2 else None,
                 )
