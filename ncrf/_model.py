@@ -1112,7 +1112,7 @@ class NCRF:
             n_workers: int = None,
             compute_explained_variance: bool = False,
             accept_whitening: bool = False,
-            track_progress: bool = False,
+            track_progress: int = 2,
     ) -> None:
         """Fit the NCRF model to prepared regression data.
 
@@ -1152,7 +1152,7 @@ class NCRF:
             that slice an already-whitened dataset, such as cross-validation.
         track_progress
             Controls optimization progress tracking. When enabled, an
-            :class:`OptimizationTracker` is attached to the model as
+            :class:`ncrf.OptimizationTracker` is attached to the model as
             ``model.tracker`` after fitting, containing a snapshot of the
             optimization state at each iteration. Possible values:
 
@@ -1160,9 +1160,9 @@ class NCRF:
             - ``1``: record objective value and residual only
             - ``2`` (default): also store ``theta`` and ``Gamma`` at each iteration,
               allowing the NCRF to be reconstructed at any point via
-              :meth:`OptimizationSnapshot.get_h`. Note that storing these
+              :meth:`ncrf.OptimizationSnapshot.get_h`. Note that storing these
               arrays at every iteration may lead to large files when pickling.
-              Use :meth:`NCRF.pickle` with ``tracker=False`` to exclude the
+              Use :meth:`ncrf.NCRF.pickle` with ``tracker=False`` to exclude the
               tracker when saving.
         """
         logger = logging.getLogger(__name__)
