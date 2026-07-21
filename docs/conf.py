@@ -49,6 +49,8 @@ nitpick_ignore = [
     ("py:class", "numpy.float64"),
     ("py:class", "numpy._typing._array_like.NDArray"),
     ("py:class", "numpy.typing.NDArray"),
+    ("py:class", "ncrf.OptimizationTracker"), 
+    ("py:meth", "ncrf.OptimizationSnapshot.get_h"),
 ]
 
 # A list of ignored prefixes for module index sorting.
